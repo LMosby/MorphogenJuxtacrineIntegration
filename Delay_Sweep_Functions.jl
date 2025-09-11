@@ -1,6 +1,6 @@
-#####################################
-# List of functions for LaminaXX.jl #
-#####################################
+########################################
+# List of functions for Delay_Sweep.jl #
+########################################
 
 # Define the discretised PDE for only Hh
 

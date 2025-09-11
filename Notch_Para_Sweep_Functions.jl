@@ -1,6 +1,6 @@
-#########################################
-# List of functions for SweepNotchXX.jl #
-#########################################
+#############################################
+# List of functions for Notch_Para_Sweep.jl #
+#############################################
 
 # Define the discretised PDE for Notch and Delta only
 function solverNotch!(du, u, p, t)

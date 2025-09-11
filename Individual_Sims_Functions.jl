@@ -1,6 +1,6 @@
-#####################################
-# List of functions for LaminaXX.jl #
-#####################################
+############################################
+# List of functions for Individual_Sims.jl #
+############################################
 
 # Define struct for storing simulation data
 struct SimData
