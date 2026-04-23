@@ -135,7 +135,7 @@ function solveSys(pNew::Vector{Float64}, prob, cbSet)
         hh = [sol.u[end][i] for i in n2Cells1:nTot]
     end
     
-    return SimData([pNew..., gliaV], 
+    return SimData([pNew..., vHh, vHhCell, gliaV], 
                     threshs, 
                     x, 
                     cellMinInds, 
@@ -158,7 +158,7 @@ function TerminateSteadyStateCondition(u, t, integrator)
     DiffEqBase.get_du!(intFromCache, integrator)
 
     # Check if all cells have differentiated
-    if(t < 6.5) # any(cellDiff .== 0))
+    if(t < 7.) # any(cellDiff .== 0))
         return false
     else
         return true
@@ -187,19 +187,15 @@ function gliaMAPKAffect!(integrator)
         if((integrator.t * gliaV) + gliaXInit >= cellGliaIntXs[currGliaCell1])
 
             # Set MAPK activation
-            # Do not allow MAPK activation in cell 5 at any time
-            # MAPK activation occurs in cell 6 at the same time as cell 1, not when glia position >= cellGliaIntXs[6]
-            # if((currGliaCell1 < 5) || ((currGliaCell1 == 5) && (hhOver)))
+            if(cellDiff[currGliaCell1] != -1)
                 global MAPK[currGliaCell1] = 1
                 global dlProd[currGliaCell1] = 1
-                global currDlProdDelayTime[currGliaCell1] = integrator.t + dlProdDelayTime
-            # end
+            end
 
             # Check if activation occurred at cell 1 (cell 1 and 6 are activated simultaneously)
-            if(currGliaCell1 == 1)
+            if((currGliaCell1 == 1) && (cellDiff[nCells] != -1))
                 global MAPK[nCells] = 1
                 global dlProd[nCells] = 1
-                global currDlProdDelayTime[nCells] = integrator.t + dlProdDelayTime
             end
 
             # Increment MAPK activation flag
@@ -251,12 +247,13 @@ function gliaMAPKAffect!(integrator)
     # DEBUG: Print important parameters
     #= if((mod(round(integrator.t / dtSim), round(dtSaveTime / dtSim)) == 0)) # || (any(MAPK .== 1)))
         println("\nt = $(integrator.t), x = $((integrator.t * gliaV) + gliaXInit)")
-        println(cellGliaIntXs)
+        #= println(cellGliaIntXs)
         println(cellDiffHhProd)
         println(cellHhProd)
-        println(MAPK)
-        println(dlProd)
+        println(MAPK) =#
         println(cellDiff)
+        println(currDlProdDelayTime)
+        println(dlProd)
         println(currCellMeanHh ./ (vHh / kHh))
         println(currNotch ./ (betaN / gammaN))
         println(currDelta ./ (betaD / gammaD))
@@ -318,6 +315,7 @@ function gliaMAPKAffect!(integrator)
                         global cellDiff[i] = 2
                         global cellDiffHhProd[i] = 1
                         global allDiffHh[i] = currCellMeanHh
+                        global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                         global allDiffDelta[i] = currDelta
                         global allDiffNotch[i] = currNotch
 
@@ -329,6 +327,7 @@ function gliaMAPKAffect!(integrator)
                         global cellDiff[i] = 3
                         global cellDiffHhProd[i] = 1
                         global allDiffHh[i] = currCellMeanHh
+                        global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                         global allDiffDelta[i] = currDelta
                         global allDiffNotch[i] = currNotch
 
@@ -345,6 +344,7 @@ function gliaMAPKAffect!(integrator)
                         global cellDiff[i] = 1
                         global cellDiffHhProd[i] = 1
                         global allDiffHh[i] = currCellMeanHh
+                        global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                         global allDiffDelta[i] = currDelta
                         global allDiffNotch[i] = currNotch
 
@@ -356,19 +356,21 @@ function gliaMAPKAffect!(integrator)
                         global cellDiff[i] = 4
                         global cellDiffHhProd[i] = 1
                         global allDiffHh[i] = currCellMeanHh
+                        global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                         global allDiffDelta[i] = currDelta
                         global allDiffNotch[i] = currNotch
 
                     end
 
                 # Check for L5 cell
-                elseif(currCellMeanHh[i] < threshHh_Low)
+                elseif((currCellMeanHh[i] < threshHh_Low) && (currNotch[i] < threshNotchS_Low))
                     # println("\nL5 differentiation in cell $(i) at t = $(integrator.t) (Hh = $(currCellMeanHh[i]), N = $(currNotch[i]), D = $(currDelta[i]))\n")
 
                     # Save cell fate
                     global cellDiff[i] = 5
                     global cellDiffHhProd[i] = 1
                     global allDiffHh[i] = currCellMeanHh
+                    global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                     global allDiffDelta[i] = currDelta
                     global allDiffNotch[i] = currNotch
 
@@ -376,8 +378,10 @@ function gliaMAPKAffect!(integrator)
 
             end
 
-        # Check for apoptotic cell fate (does not depend on time since MAPK activation)
-        elseif((currCellMeanHh[i] < threshHh_Low) && (currNotch[i] >= threshNotchS_Low)) # threshNotchS_High
+        end
+
+        # Check for apoptotic cell fate (does not depend on MAPK activation state)
+        if((currCellMeanHh[i] < threshHh_Low) && (currNotch[i] >= threshNotchS_Low)) # threshNotchS_High
 
             # Check if cell has already differentiated
             if(cellDiff[i] == 0)
@@ -407,6 +411,13 @@ function gliaMAPKAffect!(integrator)
                     global allDiffHh[i] = currCellMeanHh
                     global allDiffDelta[i] = currDelta
                     global allDiffNotch[i] = currNotch
+
+                    # Also turn off Delta (and Notch) production
+                    global dlProd[i] = 0
+                    global currDlProdDelayTime[i] = -1.
+                    if(stopNotchProd)
+                        global notchProd[i] = 0
+                    end
 
                 end
 

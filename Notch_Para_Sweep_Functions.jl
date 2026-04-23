@@ -83,13 +83,13 @@ function gliaAffect!(integrator)
         if((integrator.t * gliaV) + gliaXInit >= cellGliaIntXs[currGliaCell1])
 
             # Set Delta production activation
-            global dlProd[currGliaCell1] = 1
-            global currDlProdDelayTime[currGliaCell1] = integrator.t + dlProdDelayTime
+            if(cellDiff[currGliaCell1] != -1)
+                global dlProd[currGliaCell1] = 1
+            end
 
             # Check if activation occurred at cell 1 (cell 1 and 6 are activated simultaneously)
-            if(currGliaCell1 == 1)
+            if((currGliaCell1 == 1) && (cellDiff[nCells] != -1))
                 global dlProd[nCells] = 1
-                global currDlProdDelayTime[nCells] = integrator.t + dlProdDelayTime
             end
 
             # Increment activation flag
@@ -132,6 +132,7 @@ function gliaAffect!(integrator)
             # Store the current Notch profile
             finNotch[i] = integrator.u[1:nCells]
             global cellDiff[i] = 1 # Cell fate is not important, only need to change value from 0
+            global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime # Switch off Delta production after a time dlProdDelayTime after differentiation
 
         end
         

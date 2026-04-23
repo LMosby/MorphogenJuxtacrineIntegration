@@ -3,14 +3,14 @@
 ####################################
 
 # Check whether input argument(s) have been passed to code
-inputs = ( if isempty(ARGS) ; ["1", "1", "1"] ; else ARGS ; end )
+inputs = ( if isempty(ARGS) ; ["1", "3", "10000"] ; else ARGS ; end )
 
 # Read in parameter(s) from input arguments
 const nSims = parse(Int, inputs[1])
 const simType = parse(Int, inputs[2])
 const ID = parse(UInt, inputs[3])
 
-# Initialise the file name for saving data
+# Initialise the file names for saving data
 const folder = @__DIR__
 fileName = [folder * "/Data/$(Int(round(((ID - 1) * nSims))) + i)_DelaySweepData.jld2" for i in 1:nSims]
 
@@ -57,9 +57,9 @@ const relTol::Float64 = 1e-4
 ####################################
 
 # Define Hh parameters
-DHh::Float64 = 0.0711         # Diffusivity
+DHh::Float64 = 0.2844         # Diffusivity
 DHh /= dx2                    # Non-dimensionalise diffusivity
-kHh::Float64 = 0.002          # Degradation rate
+kHh::Float64 = 0.008          # Degradation rate
 vHh::Float64 = 0.1            # Production rate in the source region
 vHhCell::Float64 = 0.178      # Production rate of the L2 cell
 
@@ -67,17 +67,17 @@ vHhCell::Float64 = 0.178      # Production rate of the L2 cell
 # In order: betaN0, betaN, alpha, threshN, m, gammaN, betaD, threshD, n, gammaD
 betaN0::Float64 = 0.          # Basline Notch production rate
 betaN::Float64 = 0.1          # Notch production rate
-sigma::Float64 = 0.0785       # Dissociation constant in Notch production
+sigma::Float64 = 0.0509       # Dissociation constant in Notch production
 m::Int = 2                    # Hill coefficient in Notch production
-gammaN::Float64 = 0.002       # Notch degradation rate
+gammaN::Float64 = 0.008       # Notch degradation rate
 
 betaD::Float64 = 0.1          # Delta production rate
-epsilon::Float64 = 4.8197     # Dissociation constant in Delta production
+epsilon::Float64 = 1.6487     # Dissociation constant in Delta production
 n::Int = 3                    # Hill coefficient in Delta production
-gammaD::Float64 = 0.002       # Delta degradation rate
+gammaD::Float64 = 0.008       # Delta degradation rate
 
 # Initialise glial growth speed and position
-gliaV::Float64 = 1.7708 * (10 ^ (-4))
+gliaV::Float64 = 7.0833 * (10 ^ (-4)) # 1.7708 * (10 ^ (-4))
 
 # Non-dimensionalise time by a characteristic glia time-scale
 const gliaT::Float64 = cellWidth / gliaV
@@ -93,10 +93,10 @@ gammaD *= gliaT
 gliaV *= gliaT
 
 # Initialise Hh and Notch signalling thresholds
-const threshHh_Low::Float64 = 5.0841
-const threshHh_High::Float64 = 17.0238
-threshNotchS_Low::Float64 = 5.0650 # 519.1161
-threshNotchS_High::Float64 = 19.4855 # 1630.7068
+const threshHh_Low::Float64 = 1.2710
+const threshHh_High::Float64 = 4.2559
+threshNotchS_Low::Float64 = 1.3441
+threshNotchS_High::Float64 = 4.7129
 threshs::Vector{Float64} = [threshHh_Low, threshHh_High, threshNotchS_Low, threshNotchS_High]
 
 # Combine parameters into input vectors for solver
@@ -137,7 +137,7 @@ notchProd::Vector{Int} = [1 for i in 1:nCells] # Can be everywhere 1 initially a
 const waitTime::Float64 = cellWidth ./ gliaV
 
 # Define delay time between Dl production being activated and then switched off
-const dlProdDelayTime::Float64 = 2. * (cellWidth / gliaV)
+const dlProdDelayTime::Float64 = waitTime
 currDlProdDelayTime::Vector{Float64} = 1e6 * ones(Float64, nCells)
 
 # Initialise array to store differentiation status of cells
@@ -150,6 +150,8 @@ cellDiffNotch::Vector{Float64} = [-1. for i in 1:nCells]
 # Initialise storage of differentiate times for each cell
 tauDiff = Vector{Int}(undef, 6)
 tauMax::Float64 = 0.
+tauDiffVaryFlag::Vector{Int} = [0 for i in 1:nCells]
+tauDiffVary::Vector{Float64} = [-1. for i in 1:nCells]
 
 # Calculate average rates of different processes in wild-type case
 allGliaT::Vector{Float64} = ((cellGliaIntXs .- gliaXInit) ./ gliaV)
@@ -188,7 +190,6 @@ du0Hh = zeros(nX)
 tSpan = (0., Inf) # Always simulate until the system reaches steady-state
 
 # Initialise Jacobian and problem for only Hh equation
-# jacSolverHh = Symbolics.jacobian_sparsity((du, u) -> solverHh_ND!(du, u, pHh, 0.), du0Hh, u0Hh)
 jacSolverHh = Symbolics.jacobian_sparsity((du, u) -> solverHh!(du, u, pHh, 0.), du0Hh, u0Hh)
 solverHhSparse = ODEFunction(solverHh! ; jac_prototype = float.(jacSolverHh))
 probSolverHh = ODEProblem(solverHhSparse, u0Hh, tSpan, pHh, save_everystep = false)
@@ -214,7 +215,6 @@ du0 = zeros(nTot)
 tSpan = (0., Inf) # Always simulate until the system reaches steady-state
 
 # Initialise Jacobian and problem for Hh and Notch-Delta equations
-# jacSolver = Symbolics.jacobian_sparsity((du, u) -> solver_ND!(du, u, pHND, 0.), du0, u0)
 jacSolver = Symbolics.jacobian_sparsity((du, u) -> solver!(du, u, pHND, 0.), du0, u0)
 solverSparse = ODEFunction(solver! ; jac_prototype = float.(jacSolver))
 probSolver = ODEProblem(solverSparse, u0, tSpan, pHND, save_everystep = false)
@@ -232,7 +232,7 @@ cbSet = CallbackSet(cbTermNew, cbGliaMAPK) # Note: positive concentrations are e
 
 # Loop over all simulations
 @inbounds for i in 1:nSims
-    # println("\n\n$(i)")
+    println("\nSimulation $(i) / $(nSims)")
 
     # Reset key variables
     global vHhVec = [i < sIndex ? vHh : 0 for i in 1:nX]
@@ -245,6 +245,8 @@ cbSet = CallbackSet(cbTermNew, cbGliaMAPK) # Note: positive concentrations are e
     global cellHhProd = [0 for j in 1:nCells]
     global cellDiffHh = [-1. for j in 1:nCells]
     global cellDiffNotch = [-1. for j in 1:nCells]
+    global tauDiffVaryFlag = [0 for i in 1:nCells]
+    global tauDiffVary = [-1. for i in 1:nCells]
 
 	# Seed random numbers for remaining input parameters
 	nSeed::UInt = UInt(round(time())) + ID + (1e6i)
@@ -275,6 +277,7 @@ cbSet = CallbackSet(cbTermNew, cbGliaMAPK) # Note: positive concentrations are e
     if(solFlag == 0)
 
         # Save simulation results
+        println("$(cellDiff)")
         save_object(fileName[i], [nSeed, [hhT, deltaT, fateT], cellDiff, cellHhProd, cellDiffHh, cellDiffNotch])
 
     else

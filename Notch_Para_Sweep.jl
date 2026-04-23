@@ -34,11 +34,11 @@ const relTol::Float64 = 1e-4
 
 # Initialise ranges and minimum values for non-dimensional Notch-Delta parameters
 # In order: sigma, epsilon, thresh 1, thresh 2 (threshs do not necessarily haev to be in order)
-range::Vector{Float64} = [8., 8., 0.9, 0.9]
-minVal::Vector{Float64} = [-5., -5., 0.1, 0.1]
-prefactors::Vector{Float64} = [1., 1., 2.2, 1.]
-gammaN::Float64 = 0.002
-gammaD::Float64 = 0.002
+range::Vector{Float64} = [6., 6., 0.9, 0.9]
+minVal::Vector{Float64} = [-3., -3., 0.1, 0.1]
+prefactors::Vector{Float64} = [1., 1., 1., 1.]
+gammaN::Float64 = 8e-3
+gammaD::Float64 = 8e-3
 
 # Set values for constant variables not being swept over
 const m::Int = 2            # Hill coefficient in Notch production
@@ -53,11 +53,8 @@ MAPK::Vector{Int} = zeros(nCells)
 # Initialise Dl production array
 dlProd::Vector{Int} = deepcopy(MAPK)
 
-# Define number of differentiation steps that can occur before Dl production is switched off in an earlier cell
-const dlProdCellDiff::Int = 2
-
 # Initialise glial growth speed and position
-gliaV::Float64 = 1.7708 * (10 ^ (-4))
+gliaV::Float64 = 7.0833 * (10 ^ (-4)) # 1.7708 * (10 ^ (-4))
 
 # Non-dimensionalise time by a characteristic glia time-scale
 const gliaT::Float64 = cellWidth / gliaV
@@ -73,7 +70,7 @@ currGliaCell1::Int = 1
 dtSim::Float64 = 1e-2 # 1 / (4. * gammaN)
 
 # Calculate times of cell differentiation from glia velocities
-waitTime::Float64 = cellWidth ./ gliaV
+waitTime::Float64 = cellWidth / gliaV
 tauDiffBuff::Vector{Float64} = ((cellGliaIntXs .- gliaXInit) ./ gliaV)
 tauDiff::Vector{Float64} = [tauDiffBuff[i] .+ waitTime for i in 1:nCells]
 tauDiff[nCells] = tauDiff[1]
@@ -87,7 +84,7 @@ dlProd::Vector{Int} = [0 for i in 1:nCells]
 notchProd::Vector{Int} = [1 for i in 1:nCells] # Can be everywhere 1 initially as is also gated by Dl production in neighbours
 
 # Define delay time between Dl production being activated and then switched off
-dlProdDelayTime::Float64 = 2. * (cellWidth / gliaV)
+dlProdDelayTime::Float64 = waitTime
 currDlProdDelayTime::Vector{Float64} = 1e6 * ones(Float64, nCells)
 
 # Initialise arrays to store Notch concentrations at each step of MAPK activation
@@ -184,9 +181,7 @@ data = NotchData(Vector{UInt}(undef, nSims),
     if(solFlag == 0)
 
         # Only interested in the Notch concentrations at the times of cell fate decisions being made
-        # println("$([finNotch[i][i] for i in 1:6])")
         cellFateConcs::Vector{Float64} = [finNotch[2][2], finNotch[3][3], finNotch[4][4], finNotch[1][2], finNotch[2][3], finNotch[3][4]]
-        # println(cellFateConcs)
 
         # Check whether profile satsifies experimental constraints
         expConstraints::Int = 0
@@ -198,7 +193,6 @@ data = NotchData(Vector{UInt}(undef, nSims),
             # println("Success 1")
             expConstraints = 1
         end
-        # println(expConstraints)
 
         # Calculate robustness of Hh profiles
         cellRobs = robustCalculation(cellFateConcs, r[3:4])

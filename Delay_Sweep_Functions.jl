@@ -3,7 +3,6 @@
 ########################################
 
 # Define the discretised PDE for only Hh
-
 function solverHh!(du, u, p, t)
     DHh, kHh = p
 
@@ -83,7 +82,7 @@ function TerminateSteadyStateCondition(u, t, integrator)
     DiffEqBase.get_du!(intFromCache, integrator)
 
     # Check if all cells have differentiated
-    if(t < maxT) # || (any(cellDiff .== 0)))
+    if((t < maxT) || (any(cellDiff .== 0)))
         return false
     else
         return true
@@ -108,9 +107,8 @@ function gliaMAPKAffect!(integrator)
     @inbounds for i in 1:nCells
 
         # Check if Dl production should be switched on in this cell
-        if((dlProd[i] == 0) && (currDlProdDelayTime[i] > 0.) && (integrator.t > deltaT[i]))
+        if((dlProd[i] == 0) && (currDlProdDelayTime[i] > 0.) && (cellDiff[i] != -1) && (integrator.t > deltaT[i]))
             global dlProd[i] = 1
-            global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
         end
 
         # Check if Dl (and Notch) production should be switched off in this cell
@@ -121,6 +119,24 @@ function gliaMAPKAffect!(integrator)
         end
 
     end
+
+    # DEBUG: Print important parameters
+    #= if((mod(round(integrator.t / dtSim), round(waitTime / (20. * dtSim))) == 0)) # || (any(MAPK .== 1)))
+        println("\nt = $(integrator.t), x = $((integrator.t * gliaV) + gliaXInit)")
+        println(cellGliaIntXs)
+        println(cellDiffHhProd)
+        println(cellHhProd)
+        println(dlProd)
+        println(cellDiff)
+        println(currCellMeanHh ./ (vHh / kHh))
+        println(currNotch ./ (betaN / gammaN))
+        println(currDelta ./ (betaD / gammaD))
+    end =#
+    #= @inbounds for i in 1:nCells
+        if(round(integrator.t / dtSim) == round(fateT[i] / dtSim))
+            println("\nt = $(integrator.t), cell $(i) can now differentiate")
+        end
+    end =#
 
     # Check for cell differentiation
     @inbounds for i in 1:nCells
@@ -174,6 +190,7 @@ function gliaMAPKAffect!(integrator)
                     global cellDiff[i] = 2
                     global cellDiffHhProd[i] = 1
                     global cellDiffHh[i] = currCellMeanHh[i]
+                    global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                     global cellDiffNotch[i] = currNotch[i]
 
                 # Check for L3 cell
@@ -184,6 +201,7 @@ function gliaMAPKAffect!(integrator)
                     global cellDiff[i] = 3
                     global cellDiffHhProd[i] = 1
                     global cellDiffHh[i] = currCellMeanHh[i]
+                    global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                     global cellDiffNotch[i] = currNotch[i]
 
                 end
@@ -199,6 +217,7 @@ function gliaMAPKAffect!(integrator)
                     global cellDiff[i] = 1
                     global cellDiffHhProd[i] = 1
                     global cellDiffHh[i] = currCellMeanHh[i]
+                    global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                     global cellDiffNotch[i] = currNotch[i]
 
                 # Check for L4 cell
@@ -209,36 +228,71 @@ function gliaMAPKAffect!(integrator)
                     global cellDiff[i] = 4
                     global cellDiffHhProd[i] = 1
                     global cellDiffHh[i] = currCellMeanHh[i]
+                    global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
                     global cellDiffNotch[i] = currNotch[i]
 
                 end
 
-            # Check for apoptosis or L5 cell
-            elseif(currCellMeanHh[i] < threshHh_Low)
+            # Check for L5 cell
+            elseif((currCellMeanHh[i] < threshHh_Low) && (currNotch[i] < threshNotchS_Low))
+                # println("\nL5 differentiation in cell $(i) at t = $(integrator.t) (Hh = $(currCellMeanHh[i]), N = $(currNotch[i]), D = $(currDelta[i]))\n")
 
-                # Check for L5 cell
-                if(currNotch[i] < threshNotchS_Low)
-                    # println("\nL5 differentiation in cell $(i) at t = $(integrator.t) (Hh = $(currCellMeanHh[i]), N = $(currNotch[i]), D = $(currDelta[i]))\n")
+                # Save cell fate
+                global cellDiff[i] = 5
+                global cellDiffHhProd[i] = 1
+                global cellDiffHh[i] = currCellMeanHh[i]
+                global currDlProdDelayTime[i] = integrator.t + dlProdDelayTime
+                global cellDiffNotch[i] = currNotch[i]
 
-                    # Save cell fate
-                    global cellDiff[i] = 5
-                    global cellDiffHhProd[i] = 1
-                    global cellDiffHh[i] = currCellMeanHh[i]
-                    global cellDiffNotch[i] = currNotch[i]
+            end
 
-                # Check for apoptosis
-                elseif(currNotch[i] >= threshNotchS_Low)
-                    # println("\nCell $(i) undergoing apoptotic cell fate at t = $(integrator.t) (Hh = $(currCellMeanHh[i]), N = $(currNotch[i]), D = $(currDelta[i]))\n")
+        end
+
+        # Check for apoptotic cell fate (does not depend on MAPK activation state)
+        if((currCellMeanHh[i] < threshHh_Low) && (currNotch[i] >= threshNotchS_Low)) # threshNotchS_High
+
+            # Check if cell has already differentiated
+            if(cellDiff[i] == 0)
+
+                # Check if cell has waited long enough before undergoing apoptosis
+                if((tauDiffVaryFlag[i] == 0) && (tauDiffVary[i] < 0))
+
+                    # Set new delay time to reach before undergoing apoptosis
+                    tauDiffVary[i] = integrator.t + waitTime
+
+                elseif((tauDiffVaryFlag[i] == 0) && (tauDiffVary[i] > 0))
+
+                    # Check if new delay time has yet been reached
+                    if(integrator.t > tauDiffVary[i])
+                        tauDiffVaryFlag[i] = 1
+                    end
+
+                end
+                
+                # Cell undergoes apoptosis
+                if(tauDiffVaryFlag[i] == 1)
+                    # println("\nApoptosis in cell $(i) at t = $(integrator.t) (Hh = $(currCellMeanHh[i]), N = $(currNotch[i]), D = $(currDelta[i]))\n")
 
                     # Save cell fate
                     global cellDiff[i] = -1
                     global cellDiffHhProd[i] = 1
                     global cellDiffHh[i] = currCellMeanHh[i]
                     global cellDiffNotch[i] = currNotch[i]
+                    
+                    # Also turn off Delta and Notch production
+                    global dlProd[i] = 0
+                    global currDlProdDelayTime[i] = -1.
+                    global notchProd[i] = 0
 
                 end
 
             end
+
+        elseif(tauDiffVary[i] > 0)
+
+            # Reset delay times for apoptosis
+            tauDiffVaryFlag[i] = 0
+            tauDiffVary[i] = -1.
 
         end
 
