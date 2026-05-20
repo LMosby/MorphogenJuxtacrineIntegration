@@ -15,3 +15,5 @@ By: Alicia Donoghue (1,§), Lewis S Mosby (2,3,4,§), Inês Lago-Baldaia (1), Ta
 (§) These authors contributed equally to this work.
 
 (*) Correspondence to zena.hadjivasiliou@crick.ac.uk and vilaiwan.fernandes@ucl.ac.uk.
+
+[![DOI](https://zenodo.org/badge/1218830868.svg)](https://doi.org/10.5281/zenodo.20306264)
